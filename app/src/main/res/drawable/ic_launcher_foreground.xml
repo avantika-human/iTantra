@@ -1,0 +1,39 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Broadcast waves: centre dot + two arcs on each side -->
+    <path
+        android:fillColor="#22D3EE"
+        android:pathData="M54,54 m -7,0 a 7,7 0 1,1 14,0 a 7,7 0 1,1 -14,0" />
+
+    <path
+        android:strokeColor="#22D3EE"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M65,45 a 13,13 0 0,1 0,14" />
+
+    <path
+        android:strokeColor="#22D3EE"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M43,45 a 13,13 0 0,0 0,14" />
+
+    <path
+        android:strokeColor="#22D3EE"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M73,39 a 21,21 0 0,1 0,26" />
+
+    <path
+        android:strokeColor="#22D3EE"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M35,39 a 21,21 0 0,0 0,26" />
+</vector>

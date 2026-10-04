@@ -1,0 +1,6 @@
+<resources>
+    <!-- Pure-Compose app: only needs a no-action-bar shell + dark flash-guard. -->
+    <style name="Theme.iTantra" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>

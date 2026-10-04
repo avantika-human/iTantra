@@ -1,0 +1,14 @@
+# Built artifacts
+/build
+/app/build
+
+# IDE
+/.idea
+*.iml
+
+# Local configuration (SDK paths) - machine specific
+/local.properties
+
+# OS noise
+.DS_Store
+Thumbs.db
