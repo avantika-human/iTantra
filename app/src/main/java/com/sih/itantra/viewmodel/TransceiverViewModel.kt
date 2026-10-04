@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.sih.itantra.engine.SherpaEngine
+import com.sih.itantra.engine.TranslatorEngine
+import com.sih.itantra.network.P2PSocketManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +16,8 @@ import java.util.Locale
 
 enum class ConnectionStatus(val label: String) {
     OFFLINE("Offline"),
-    LOCAL_HOTSPOT_READY("Hotspot Ready")
+    LOCAL_HOTSPOT_READY("Hotspot Ready"),
+    CONNECTED("Connected")
 }
 
 enum class Role {
@@ -32,17 +35,21 @@ data class LogEntry(
 )
 
 data class TransceiverUiState(
-    val connectionStatus: ConnectionStatus = ConnectionStatus.LOCAL_HOTSPOT_READY,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.OFFLINE,
     val role: Role = Role.TRANSMITTER,
     val emergencyOverride: Boolean = false,
     val isPttActive: Boolean = false,
     val currentLanguage: String = "en",
+    val targetLanguage: String = "te",
+    val isConnected: Boolean = false,
     val logs: List<LogEntry> = emptyList()
 )
 
 class TransceiverViewModel : ViewModel() {
 
     private var sherpaEngine: SherpaEngine? = null
+    private var translatorEngine: TranslatorEngine? = null
+    private var socketManager: P2PSocketManager? = null
 
     private val _uiState = MutableStateFlow(TransceiverUiState())
     val uiState: StateFlow<TransceiverUiState> = _uiState.asStateFlow()
@@ -52,15 +59,57 @@ class TransceiverViewModel : ViewModel() {
     fun initializeEngine(context: Context) {
         if (sherpaEngine != null) return
 
-        sherpaEngine = SherpaEngine(context) { message ->
-            appendLog(LogLevel.INFO, message)
-        }
+        // 1. Initialize Engines (using explicit named parameters)
+        sherpaEngine = SherpaEngine(
+            context = context,
+            onLog = { message ->
+                appendLog(LogLevel.AUDIO, message)
+            }
+        )
+
+        translatorEngine = TranslatorEngine(
+            context = context,
+            onLog = { message ->
+                appendLog(LogLevel.INFO, message)
+            }
+        )
+
+        // 2. Initialize P2P Socket Manager
+        socketManager = P2PSocketManager(
+            onPacketReceived = { packet ->
+                appendLog(LogLevel.NET, "RX Packet: \"${packet.payload}\" (Emergency=${packet.isEmergency})")
+                speakIncomingText(packet.payload)
+            },
+            onLog = { message ->
+                appendLog(LogLevel.NET, message)
+            },
+            onConnectionChanged = { connected ->
+                _uiState.value = _uiState.value.copy(
+                    isConnected = connected,
+                    connectionStatus = if (connected) ConnectionStatus.CONNECTED else ConnectionStatus.LOCAL_HOTSPOT_READY
+                )
+            }
+        )
 
         viewModelScope.launch {
-            appendLog(LogLevel.INFO, "Loading local Sherpa-ONNX models...")
+            appendLog(LogLevel.INFO, "Loading local Sherpa-ONNX & Translator models...")
             sherpaEngine?.initializeStt()
             sherpaEngine?.initializeTts()
+            translatorEngine?.initialize()
+            appendLog(LogLevel.INFO, "All local engines loaded successfully!")
         }
+    }
+
+    // Networking Actions
+    fun startHostServer() {
+        appendLog(LogLevel.NET, "Starting P2P Host Server...")
+        socketManager?.startServer()
+    }
+
+    fun connectToPeer(ipAddress: String) {
+        val targetIp = ipAddress.ifBlank { P2PSocketManager.DEFAULT_HOST }
+        appendLog(LogLevel.NET, "Connecting to Peer IP: $targetIp...")
+        socketManager?.connectToPeer(host = targetIp)
     }
 
     fun onPermissionResult(audioGranted: Boolean, locationGranted: Boolean) {
@@ -88,6 +137,9 @@ class TransceiverViewModel : ViewModel() {
     fun onRoleSelected(role: Role) {
         _uiState.value = _uiState.value.copy(role = role)
         appendLog(LogLevel.INFO, "Role switched to: $role")
+        if (role == Role.RECEIVER) {
+            startHostServer()
+        }
     }
 
     fun onEmergencyOverrideChanged(enabled: Boolean) {
@@ -95,13 +147,18 @@ class TransceiverViewModel : ViewModel() {
         appendLog(LogLevel.WARN, "Emergency override set to: $enabled")
     }
 
-    fun switchLanguage(lang: String) {
+    fun switchSourceLanguage(lang: String) {
         _uiState.value = _uiState.value.copy(currentLanguage = lang)
         sherpaEngine?.setLanguage(lang)
-        appendLog(LogLevel.AUDIO, "Language changed to: $lang")
+        appendLog(LogLevel.AUDIO, "Source language set to: $lang")
     }
 
-    // PTT Press Down -> Start recording & STT stream
+    fun switchTargetLanguage(lang: String) {
+        _uiState.value = _uiState.value.copy(targetLanguage = lang)
+        appendLog(LogLevel.AUDIO, "Target language set to: $lang")
+    }
+
+    // PTT Press Down -> Start recording
     fun onPttPressed() {
         if (_uiState.value.role != Role.TRANSMITTER) {
             appendLog(LogLevel.WARN, "PTT ignored: Device is in Receiver mode.")
@@ -112,27 +169,44 @@ class TransceiverViewModel : ViewModel() {
         sherpaEngine?.startListening()
     }
 
-    // PTT Release Up -> Stop recording, decode STT, ready for socket transmission
+    // PTT Release Up -> Decode STT -> Translate NMT -> Send over Socket
     fun onPttReleased() {
         if (!_uiState.value.isPttActive) return
         _uiState.value = _uiState.value.copy(isPttActive = false)
-        appendLog(LogLevel.AUDIO, "PTT Released -> Stopping recording & decoding...")
+        appendLog(LogLevel.AUDIO, "PTT Released -> Decoding & Translating...")
 
         viewModelScope.launch {
             val recognizedText = sherpaEngine?.stopListeningAndDecode() ?: ""
             if (recognizedText.isNotBlank() &&
                 recognizedText != "No speech detected" &&
                 recognizedText != "Recognizer error") {
-                appendLog(LogLevel.INFO, "Recognized Text: \"$recognizedText\"")
 
-                // TODO: Next step is sending this 'recognizedText' string over your local P2P socket!
+                appendLog(LogLevel.INFO, "STT Text: \"$recognizedText\"")
+
+                // 1. Local Machine Translation
+                val srcLang = _uiState.value.currentLanguage
+                val tgtLang = _uiState.value.targetLanguage
+                val translatedText = translatorEngine?.translate(recognizedText, srcLang, tgtLang) ?: recognizedText
+
+                appendLog(LogLevel.INFO, "NMT Translated ($srcLang->$tgtLang): \"$translatedText\"")
+
+                // 2. Transmit Packet over P2P Socket
+                val isEmergency = _uiState.value.emergencyOverride
+                val sent = socketManager?.sendPacket(payload = translatedText, isEmergency = isEmergency) ?: false
+
+                if (sent) {
+                    appendLog(LogLevel.NET, "TX Success -> Packet sent across socket!")
+                } else {
+                    appendLog(LogLevel.ERROR, "TX Failed -> Socket not connected.")
+                }
+
             } else {
                 appendLog(LogLevel.WARN, "Speech recognition result: $recognizedText")
             }
         }
     }
 
-    // Triggered when text arrives from your friend's phone over local sockets
+    // Triggered when text arrives from peer over local socket
     fun speakIncomingText(text: String) {
         appendLog(LogLevel.AUDIO, "Incoming packet received: \"$text\" -> Synthesizing TTS...")
         sherpaEngine?.speak(text)
@@ -141,7 +215,7 @@ class TransceiverViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         sherpaEngine?.shutdown()
+        translatorEngine?.release()
+        socketManager?.shutdown()
     }
-
-
 }

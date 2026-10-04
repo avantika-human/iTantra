@@ -91,7 +91,7 @@ fun TransceiverScreen(viewModel: TransceiverViewModel) {
                 // Language Selector for switching between English (en) and Telugu (te)
                 LanguageSelector(
                     currentLanguage = uiState.currentLanguage,
-                    onLanguageSelected = viewModel::switchLanguage
+                    onLanguageSelected = viewModel::switchSourceLanguage
                 )
 
                 EmergencyPrioritySwitch(
@@ -149,6 +149,7 @@ private fun ConnectionBadge(status: ConnectionStatus) {
     val (badgeColor, label) = when (status) {
         ConnectionStatus.OFFLINE -> AlertRed to status.label
         ConnectionStatus.LOCAL_HOTSPOT_READY -> SignalGreen to status.label
+        ConnectionStatus.CONNECTED -> SignalGreen to status.label
     }
     Row(
         verticalAlignment = Alignment.CenterVertically,
