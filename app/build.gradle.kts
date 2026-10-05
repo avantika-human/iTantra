@@ -51,7 +51,21 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+
+    androidResources {
+        noCompress += listOf("onnx", "tflite", "bin")
+    }
+
+    packaging {
+        jniLibs {
+            pickFirsts += listOf(
+                "**/libonnxruntime.so",
+                "**/libc++_shared.so"
+            )
+        }
+    }
 }
+
 
 dependencies {
     // ONNX Runtime for IndicTrans2 execution
@@ -79,3 +93,4 @@ dependencies {
     // ---- Debug-only tooling ----
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
+

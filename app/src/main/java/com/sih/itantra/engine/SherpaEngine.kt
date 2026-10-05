@@ -40,19 +40,37 @@ class SherpaEngine(
 
     private val sampleRate = 16000
 
+    private fun assetExists(path: String): Boolean {
+        return try {
+            context.assets.open(path).use { true }
+        } catch (e: Exception) {
+            onLog("CRITICAL: Missing asset file -> $path")
+            false
+        }
+    }
+
     fun initializeStt() {
-        onLog("STT init -> Loading models from assets...")
+        onLog("STT init -> Verifying and loading models...")
 
         try {
-            // 1. Initialize English Zipformer (Transducer)
+            val encoderPath = "$STT_EN_MODEL_DIR/encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx"
+            val decoderPath = "$STT_EN_MODEL_DIR/decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx"
+            val joinerPath  = "$STT_EN_MODEL_DIR/joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"
+            val tokensPath  = "$STT_EN_MODEL_DIR/tokens.txt"
+
+            if (!assetExists(encoderPath) || !assetExists(tokensPath)) {
+                onLog("STT init skipped -> English asset files missing!")
+                return
+            }
+
             val englishTransducer = OfflineTransducerModelConfig(
-                encoder = "$STT_EN_MODEL_DIR/encoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-                decoder = "$STT_EN_MODEL_DIR/decoder-epoch-99-avg-1-chunk-16-left-128.int8.onnx",
-                joiner = "$STT_EN_MODEL_DIR/joiner-epoch-99-avg-1-chunk-16-left-128.int8.onnx"
+                encoder = encoderPath,
+                decoder = decoderPath,
+                joiner = joinerPath
             )
             val englishModelConfig = OfflineModelConfig(
                 transducer = englishTransducer,
-                tokens = "$STT_EN_MODEL_DIR/tokens.txt",
+                tokens = tokensPath,
                 numThreads = 2,
                 debug = false
             )
@@ -63,67 +81,69 @@ class SherpaEngine(
             activeRecognizer = englishRecognizer
             onLog("STT init -> English Zipformer loaded & active!")
 
-            // 2. Initialize Telugu IndicConformer (NeMo CTC)
             // 2. Initialize Telugu IndicConformer
-            val teluguModelConfig = OfflineModelConfig(
-                tokens = "$STT_INDIC_MODEL_DIR/tokens.txt",
-                numThreads = 2,
-                debug = false
-            )
+            val teluguModelPath  = "$STT_INDIC_MODEL_DIR/model.int8.onnx"
+            val teluguTokensPath = "$STT_INDIC_MODEL_DIR/tokens.txt"
 
-            // Assign the NeMo/CTC config directly to the property
-            teluguModelConfig.nemo  = OfflineNemoEncDecCtcModelConfig(
-                model = "$STT_INDIC_MODEL_DIR/model.int8.onnx"
-            )
+            if (assetExists(teluguModelPath) && assetExists(teluguTokensPath)) {
+                val teluguModelConfig = OfflineModelConfig(
+                    tokens = teluguTokensPath,
+                    numThreads = 2,
+                    debug = false
+                ).apply {
+                    nemo = OfflineNemoEncDecCtcModelConfig(model = teluguModelPath)
+                }
 
-            teluguRecognizer = OfflineRecognizer(
-                context.assets,
-                OfflineRecognizerConfig(modelConfig = teluguModelConfig)
-            )
-            onLog("STT init -> Telugu IndicConformer loaded!")
+                teluguRecognizer = OfflineRecognizer(
+                    context.assets,
+                    OfflineRecognizerConfig(modelConfig = teluguModelConfig)
+                )
+                onLog("STT init -> Telugu IndicConformer loaded!")
+            }
 
-        } catch (e: Exception) {
-            onLog("STT init error -> ${e.message}")
+        } catch (t: Throwable) {
+            onLog("STT init error -> ${t.localizedMessage}")
         }
     }
 
     fun initializeTts() {
         onLog("TTS init -> Initializing English and Telugu MMS-TTS models...")
         try {
-            // 1. Initialize English MMS-TTS
-            val enVitsConfig = OfflineTtsVitsModelConfig(
-                model = "$TTS_EN_MODEL_DIR/model.onnx",
-                tokens = "$TTS_EN_MODEL_DIR/tokens.txt"
-            )
-            val enTtsConfig = OfflineTtsConfig(
-                model = OfflineTtsModelConfig(
-                    vits = enVitsConfig,
-                    numThreads = 2
-                )
-            )
-            englishTts = OfflineTts(context.assets, enTtsConfig)
-            activeTts = englishTts
-            onLog("TTS init -> English MMS-TTS loaded & active!")
+            val enModel = "$TTS_EN_MODEL_DIR/model.onnx"
+            val enTokens = "$TTS_EN_MODEL_DIR/tokens.txt"
 
-            // 2. Initialize Telugu MMS-TTS
-            val teVitsConfig = OfflineTtsVitsModelConfig(
-                model = "$TTS_TE_MODEL_DIR/model.onnx",
-                tokens = "$TTS_TE_MODEL_DIR/tokens.txt"
-            )
-            val teTtsConfig = OfflineTtsConfig(
-                model = OfflineTtsModelConfig(
-                    vits = teVitsConfig,
-                    numThreads = 2
+            if (assetExists(enModel) && assetExists(enTokens)) {
+                val enVitsConfig = OfflineTtsVitsModelConfig(
+                    model = enModel,
+                    tokens = enTokens
                 )
-            )
-            teluguTts = OfflineTts(context.assets, teTtsConfig)
-            onLog("TTS init -> Telugu MMS-TTS loaded!")
+                val enTtsConfig = OfflineTtsConfig(
+                    model = OfflineTtsModelConfig(vits = enVitsConfig, numThreads = 2)
+                )
+                englishTts = OfflineTts(context.assets, enTtsConfig)
+                activeTts = englishTts
+                onLog("TTS init -> English MMS-TTS loaded & active!")
+            }
 
-        } catch (e: Exception) {
-            onLog("TTS init error -> ${e.message}")
+            val teModel = "$TTS_TE_MODEL_DIR/model.onnx"
+            val teTokens = "$TTS_TE_MODEL_DIR/tokens.txt"
+
+            if (assetExists(teModel) && assetExists(teTokens)) {
+                val teVitsConfig = OfflineTtsVitsModelConfig(
+                    model = teModel,
+                    tokens = teTokens
+                )
+                val teTtsConfig = OfflineTtsConfig(
+                    model = OfflineTtsModelConfig(vits = teVitsConfig, numThreads = 2)
+                )
+                teluguTts = OfflineTts(context.assets, teTtsConfig)
+                onLog("TTS init -> Telugu MMS-TTS loaded!")
+            }
+
+        } catch (t: Throwable) {
+            onLog("TTS init error -> ${t.localizedMessage}")
         }
     }
-
     fun setLanguage(lang: String) {
         currentLanguage = lang
         when (lang) {
@@ -262,9 +282,9 @@ class SherpaEngine(
     }
 
     companion object {
-        const val STT_EN_MODEL_DIR = "sherpa-stt-en"
-        const val STT_INDIC_MODEL_DIR = "sherpa-stt-indic"
-        const val TTS_EN_MODEL_DIR = "sherpa-tts-en"
-        const val TTS_TE_MODEL_DIR = "sherpa-tts-te"
+            const val STT_EN_MODEL_DIR = "sherpa-stt/sherpa_zipformer_en"
+            const val STT_INDIC_MODEL_DIR = "sherpa-stt/sherpa_IndicConformer"
+            const val TTS_EN_MODEL_DIR = "sherpa-tts/sherpa-tts-en"
+            const val TTS_TE_MODEL_DIR = "sherpa-tts/sherpa-tts-te"
     }
 }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.sih.itantra.engine.SherpaEngine
 import com.sih.itantra.engine.TranslatorEngine
 import com.sih.itantra.network.P2PSocketManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,16 +60,16 @@ class TransceiverViewModel : ViewModel() {
     fun initializeEngine(context: Context) {
         if (sherpaEngine != null) return
 
-        // 1. Initialize Engines (using explicit named parameters)
+        // 1. Initialize Engines
         sherpaEngine = SherpaEngine(
-            context = context,
+            context = context.applicationContext,
             onLog = { message ->
                 appendLog(LogLevel.AUDIO, message)
             }
         )
 
         translatorEngine = TranslatorEngine(
-            context = context,
+            context = context.applicationContext,
             onLog = { message ->
                 appendLog(LogLevel.INFO, message)
             }
@@ -91,12 +92,29 @@ class TransceiverViewModel : ViewModel() {
             }
         )
 
-        viewModelScope.launch {
+        // 3. Background Thread Initialization with Throwable safety
+        viewModelScope.launch(Dispatchers.IO) {
             appendLog(LogLevel.INFO, "Loading local Sherpa-ONNX & Translator models...")
-            sherpaEngine?.initializeStt()
-            sherpaEngine?.initializeTts()
-            translatorEngine?.initialize()
-            appendLog(LogLevel.INFO, "All local engines loaded successfully!")
+
+            runCatching {
+                sherpaEngine?.initializeStt()
+            }.onFailure { t ->
+                appendLog(LogLevel.ERROR, "STT Load Failed: ${t.localizedMessage}")
+            }
+
+            runCatching {
+                sherpaEngine?.initializeTts()
+            }.onFailure { t ->
+                appendLog(LogLevel.ERROR, "TTS Load Failed: ${t.localizedMessage}")
+            }
+
+            runCatching {
+                translatorEngine?.initialize()
+            }.onFailure { t ->
+                appendLog(LogLevel.ERROR, "Translator Load Failed: ${t.localizedMessage}")
+            }
+
+            appendLog(LogLevel.INFO, "Model loading phase completed.")
         }
     }
 
@@ -166,6 +184,8 @@ class TransceiverViewModel : ViewModel() {
         }
         _uiState.value = _uiState.value.copy(isPttActive = true)
         appendLog(LogLevel.AUDIO, "PTT Pressed -> Starting mic recording & STT...")
+
+        sherpaEngine?.setLanguage(_uiState.value.currentLanguage)
         sherpaEngine?.startListening()
     }
 
@@ -175,7 +195,7 @@ class TransceiverViewModel : ViewModel() {
         _uiState.value = _uiState.value.copy(isPttActive = false)
         appendLog(LogLevel.AUDIO, "PTT Released -> Decoding & Translating...")
 
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val recognizedText = sherpaEngine?.stopListeningAndDecode() ?: ""
             if (recognizedText.isNotBlank() &&
                 recognizedText != "No speech detected" &&
@@ -183,14 +203,12 @@ class TransceiverViewModel : ViewModel() {
 
                 appendLog(LogLevel.INFO, "STT Text: \"$recognizedText\"")
 
-                // 1. Local Machine Translation
                 val srcLang = _uiState.value.currentLanguage
                 val tgtLang = _uiState.value.targetLanguage
                 val translatedText = translatorEngine?.translate(recognizedText, srcLang, tgtLang) ?: recognizedText
 
                 appendLog(LogLevel.INFO, "NMT Translated ($srcLang->$tgtLang): \"$translatedText\"")
 
-                // 2. Transmit Packet over P2P Socket
                 val isEmergency = _uiState.value.emergencyOverride
                 val sent = socketManager?.sendPacket(payload = translatedText, isEmergency = isEmergency) ?: false
 
@@ -208,7 +226,10 @@ class TransceiverViewModel : ViewModel() {
 
     // Triggered when text arrives from peer over local socket
     fun speakIncomingText(text: String) {
-        appendLog(LogLevel.AUDIO, "Incoming packet received: \"$text\" -> Synthesizing TTS...")
+        val targetLang = _uiState.value.targetLanguage
+        appendLog(LogLevel.AUDIO, "Incoming packet received: \"$text\" -> Setting TTS language to [$targetLang] & synthesizing...")
+
+        sherpaEngine?.setLanguage(targetLang)
         sherpaEngine?.speak(text)
     }
 
