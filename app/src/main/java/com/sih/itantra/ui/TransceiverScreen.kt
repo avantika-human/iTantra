@@ -25,7 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,18 +46,16 @@ import com.sih.itantra.viewmodel.Role
 import com.sih.itantra.viewmodel.TransceiverViewModel
 
 // ---------------------------------------------------------------------------
-// Tactical dark palette
+// Premium Minimalist Palette
 // ---------------------------------------------------------------------------
-private val TacticalBlack = Color(0xFF0A0F14)
-private val PanelGray = Color(0xFF141C24)
-private val ConsoleBlack = Color(0xFF0D1319)
-private val NeonCyan = Color(0xFF22D3EE)
-private val SignalGreen = Color(0xFF34D399)
-private val AlertRed = Color(0xFFF87171)
-private val AmberWarn = Color(0xFFFBBF24)
-private val AudioViolet = Color(0xFFC084FC)
-private val TextPrimary = Color(0xFFE6EDF3)
-private val TextDim = Color(0xFF8B98A5)
+private val Ivory = Color(0xFFF3F1EC) // Background
+private val Midnight = Color(0xFF3C3E4A) // Primary text / actions
+private val Garden = Color(0xFFE0DFD2) // Cards
+private val Moss = Color(0xFFB6B8AB) // Secondary accents
+private val Smoke = Color(0xFF9FA3AD) // Muted elements
+
+private val HeartRateBlue = Color(0x269FA3AD) // Smoke tinted
+private val StepsMoss = Color(0x40B6B8AB) // Moss tinted
 
 // ---------------------------------------------------------------------------
 // Screen
@@ -67,11 +65,11 @@ fun TransceiverScreen(viewModel: TransceiverViewModel) {
     val uiState by viewModel.uiState.collectAsState()
 
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            primary = NeonCyan,
-            background = TacticalBlack,
-            surface = PanelGray,
-            onPrimary = TacticalBlack
+        colorScheme = lightColorScheme(
+            primary = Midnight,
+            background = Ivory,
+            surface = Garden,
+            onPrimary = Ivory
         )
     ) {
         Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -79,32 +77,40 @@ fun TransceiverScreen(viewModel: TransceiverViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                StatusHeader(connectionStatus = uiState.connectionStatus)
+                StatusHeader(connectionStatus = uiState.connectionStatus, role = uiState.role)
 
-                RoleSelector(
-                    selectedRole = uiState.role,
-                    onRoleSelected = viewModel::onRoleSelected
-                )
+                // Mocking the grid from the web UI
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    // Network Card (Role)
+                    RoleSelectorCard(
+                        modifier = Modifier.weight(1f),
+                        selectedRole = uiState.role,
+                        onRoleSelected = viewModel::onRoleSelected
+                    )
 
-                // Language Selector for switching between English (en) and Telugu (te)
-                LanguageSelector(
+                    // Alert Override Card
+                    EmergencyPriorityCard(
+                        modifier = Modifier.weight(1f),
+                        enabled = uiState.emergencyOverride,
+                        onCheckedChange = viewModel::onEmergencyOverrideChanged
+                    )
+                }
+                
+                LanguageSelectorCard(
                     currentLanguage = uiState.currentLanguage,
                     onLanguageSelected = viewModel::switchSourceLanguage
                 )
 
-                EmergencyPrioritySwitch(
-                    enabled = uiState.emergencyOverride,
-                    onCheckedChange = viewModel::onEmergencyOverrideChanged
-                )
-                PttButton(
+                PttButtonCard(
                     isTransmitter = uiState.role == Role.TRANSMITTER,
                     isPttActive = uiState.isPttActive,
                     onPressed = viewModel::onPttPressed,
                     onReleased = viewModel::onPttReleased
                 )
-                ConsoleLogBox(
+
+                ConsoleLogList(
                     logs = uiState.logs,
                     modifier = Modifier.weight(1f)
                 )
@@ -114,295 +120,233 @@ fun TransceiverScreen(viewModel: TransceiverViewModel) {
 }
 
 // ---------------------------------------------------------------------------
-// Header + connection status badge
+// Header
 // ---------------------------------------------------------------------------
 @Composable
-private fun StatusHeader(connectionStatus: ConnectionStatus) {
+private fun StatusHeader(connectionStatus: ConnectionStatus, role: Role) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(PanelGray)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Column {
             Text(
-                text = "iTantra",
-                color = NeonCyan,
+                text = "Neural Walkie-Talkie",
+                color = Midnight,
                 fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.W600,
+                lineHeight = 28.sp
             )
-            Text(
-                text = "Walkie-Talkie Neural Transceiver",
-                color = TextDim,
-                fontSize = 12.sp
-            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (connectionStatus == ConnectionStatus.OFFLINE) Smoke else Midnight)
+                )
+                Text(
+                    text = "${connectionStatus.label} • Device B (${role.name})",
+                    color = Smoke,
+                    fontSize = 13.sp
+                )
+            }
         }
-        ConnectionBadge(status = connectionStatus)
-    }
-}
-
-@Composable
-private fun ConnectionBadge(status: ConnectionStatus) {
-    val (badgeColor, label) = when (status) {
-        ConnectionStatus.OFFLINE -> AlertRed to status.label
-        ConnectionStatus.LOCAL_HOTSPOT_READY -> SignalGreen to status.label
-        ConnectionStatus.CONNECTED -> SignalGreen to status.label
-    }
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(badgeColor.copy(alpha = 0.15f))
-            .border(BorderStroke(1.dp, badgeColor), RoundedCornerShape(50))
-            .padding(horizontal = 12.dp, vertical = 6.dp)
-    ) {
-        Box(
-            modifier = Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(badgeColor)
-        )
-        Text(
-            text = label,
-            color = badgeColor,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.SemiBold
-        )
     }
 }
 
 // ---------------------------------------------------------------------------
-// Role selector: Transmitter (STT) vs Receiver (TTS)
+// Network / Role Selector Card
 // ---------------------------------------------------------------------------
 @Composable
-private fun RoleSelector(
+private fun RoleSelectorCard(
+    modifier: Modifier = Modifier,
     selectedRole: Role,
     onRoleSelected: (Role) -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(PanelGray)
-            .padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        RoleOption(
-            label = "Transmitter (STT)",
-            subtitle = "Speak -> transmit",
-            isSelected = selectedRole == Role.TRANSMITTER,
-            modifier = Modifier.weight(1f),
-            onClick = { onRoleSelected(Role.TRANSMITTER) }
-        )
-        RoleOption(
-            label = "Receiver (TTS)",
-            subtitle = "Listen -> playback",
-            isSelected = selectedRole == Role.RECEIVER,
-            modifier = Modifier.weight(1f),
-            onClick = { onRoleSelected(Role.RECEIVER) }
-        )
-    }
-}
-
-@Composable
-private fun RoleOption(
-    label: String,
-    subtitle: String,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val tint = if (isSelected) NeonCyan else TextDim
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) NeonCyan.copy(alpha = 0.16f) else Color.Transparent)
-            .border(
-                BorderStroke(1.dp, if (isSelected) NeonCyan else Color(0xFF22303B)),
-                RoundedCornerShape(12.dp)
-            )
-            .clickable { onClick() }
-            .padding(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .height(140.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(HeartRateBlue)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, color = tint, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        Text(text = subtitle, color = TextDim, fontSize = 11.sp)
+        Column {
+            Text(text = "Mode", color = Midnight, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(text = "Current Role", color = Smoke, fontSize = 12.sp)
+        }
+        
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RoleOption(
+                label = "TX",
+                isSelected = selectedRole == Role.TRANSMITTER,
+                modifier = Modifier.weight(1f),
+                onClick = { onRoleSelected(Role.TRANSMITTER) }
+            )
+            RoleOption(
+                label = "RX",
+                isSelected = selectedRole == Role.RECEIVER,
+                modifier = Modifier.weight(1f),
+                onClick = { onRoleSelected(Role.RECEIVER) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun RoleOption(label: String, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val bg = if (isSelected) Midnight else Color.Transparent
+    val textCol = if (isSelected) Ivory else Smoke
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .border(BorderStroke(1.dp, if (isSelected) Midnight else Moss.copy(alpha=0.3f)), RoundedCornerShape(12.dp))
+            .clickable { onClick() }
+            .padding(vertical = 8.dp),
+        contentAlignment = Alignment.Center
+    ) {
+         Text(text = label, color = textCol, fontWeight = FontWeight.Bold, fontSize = 13.sp)
     }
 }
 
 // ---------------------------------------------------------------------------
-// Language selector: English (en) vs Telugu (te)
+// Language Selector Card (Horizontal)
 // ---------------------------------------------------------------------------
 @Composable
-private fun LanguageSelector(
+private fun LanguageSelectorCard(
     currentLanguage: String,
     onLanguageSelected: (String) -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(PanelGray)
-            .padding(6.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        LanguageOption(
-            label = "English (EN)",
-            isSelected = currentLanguage == "en",
-            modifier = Modifier.weight(1f),
-            onClick = { onLanguageSelected("en") }
-        )
-        LanguageOption(
-            label = "Telugu (TE)",
-            isSelected = currentLanguage == "te",
-            modifier = Modifier.weight(1f),
-            onClick = { onLanguageSelected("te") }
-        )
-    }
-}
-
-@Composable
-private fun LanguageOption(
-    label: String,
-    isSelected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    val tint = if (isSelected) SignalGreen else TextDim
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
-            .background(if (isSelected) SignalGreen.copy(alpha = 0.16f) else Color.Transparent)
-            .border(
-                BorderStroke(1.dp, if (isSelected) SignalGreen else Color(0xFF22303B)),
-                RoundedCornerShape(12.dp)
-            )
-            .clickable { onClick() }
-            .padding(10.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = label,
-            color = tint,
-            fontWeight = FontWeight.Bold,
-            fontSize = 13.sp
-        )
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Emergency priority switch
-// ---------------------------------------------------------------------------
-@Composable
-private fun EmergencyPrioritySwitch(
-    enabled: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(PanelGray)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
+            .clip(RoundedCornerShape(28.dp))
+            .background(Garden)
+            .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = "Alert Override (100% Vol)",
-                color = if (enabled) AlertRed else TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
+        Column {
+            Text(text = "Language", color = Midnight, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(text = "Speech Model", color = Midnight.copy(alpha=0.6f), fontSize = 12.sp)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            RoleOption(
+                label = "EN",
+                isSelected = currentLanguage == "en",
+                modifier = Modifier.size(48.dp, 36.dp),
+                onClick = { onLanguageSelected("en") }
             )
-            Text(
-                text = if (enabled) {
-                    "EMERGENCY traffic -> force max media volume, bypass silence"
-                } else {
-                    "Normal priority audio routing"
-                },
-                color = TextDim,
-                fontSize = 11.sp
+            RoleOption(
+                label = "TE",
+                isSelected = currentLanguage == "te",
+                modifier = Modifier.size(48.dp, 36.dp),
+                onClick = { onLanguageSelected("te") }
             )
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Emergency Priority Card
+// ---------------------------------------------------------------------------
+@Composable
+private fun EmergencyPriorityCard(
+    modifier: Modifier = Modifier,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Column(
+        modifier = modifier
+            .height(140.dp)
+            .clip(RoundedCornerShape(28.dp))
+            .background(StepsMoss)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column {
+            Text(text = if(enabled) "Active" else "Standby", color = Midnight, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+            Text(text = "Alert Override", color = Smoke, fontSize = 12.sp)
+        }
+        
         Switch(
             checked = enabled,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = AlertRed,
-                checkedTrackColor = AlertRed.copy(alpha = 0.4f),
-                uncheckedThumbColor = TextDim,
-                uncheckedTrackColor = Color(0xFF22303B)
+                checkedThumbColor = Ivory,
+                checkedTrackColor = Midnight,
+                uncheckedThumbColor = Ivory,
+                uncheckedTrackColor = Moss.copy(alpha=0.5f),
+                uncheckedBorderColor = Color.Transparent
             )
         )
     }
 }
 
 // ---------------------------------------------------------------------------
-// Massive push-to-talk button: press = STT start, release = send
+// PTT Big Card
 // ---------------------------------------------------------------------------
 @Composable
-private fun PttButton(
+private fun PttButtonCard(
     isTransmitter: Boolean,
     isPttActive: Boolean,
     onPressed: () -> Unit,
     onReleased: () -> Unit
 ) {
-    val ringColor = when {
-        isPttActive -> AlertRed
-        isTransmitter -> NeonCyan
-        else -> TextDim
-    }
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(210.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(190.dp)
-                .clip(CircleShape)
-                .background(ringColor.copy(alpha = if (isPttActive) 0.30f else 0.14f))
-                .border(BorderStroke(4.dp, ringColor), CircleShape)
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onPress = {
-                            onPressed()
-                            tryAwaitRelease()
-                            onReleased()
-                        }
-                    )
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = when {
-                        !isTransmitter -> "RECEIVE MODE"
-                        isPttActive -> "ON AIR"
-                        else -> "HOLD TO TALK"
-                    },
-                    color = ringColor,
-                    fontWeight = FontWeight.Black,
-                    fontSize = 20.sp,
-                    letterSpacing = 2.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = when {
-                        !isTransmitter -> "Standby for incoming traffic"
-                        isPttActive -> "Streaming mic -> STT"
-                        else -> "Press & hold to speak"
-                    },
-                    color = TextDim,
-                    fontSize = 11.sp
+            .clip(RoundedCornerShape(28.dp))
+            .background(Garden)
+            .pointerInput(Unit) {
+                detectTapGestures(
+                    onPress = {
+                        onPressed()
+                        tryAwaitRelease()
+                        onReleased()
+                    }
                 )
             }
+            .padding(vertical = 24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .clip(CircleShape)
+                    .background(if (isPttActive) Midnight else Ivory),
+                contentAlignment = Alignment.Center
+            ) {
+                // Outer ring representation
+                Box(
+                    modifier = Modifier.size(40.dp).clip(CircleShape).border(2.dp, if (isPttActive) Ivory else Midnight, CircleShape)
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = when {
+                    !isTransmitter -> "RECEIVE MODE"
+                    isPttActive -> "ON AIR"
+                    else -> "Hold to Speak"
+                },
+                color = Midnight,
+                fontWeight = FontWeight.Medium,
+                fontSize = 16.sp
+            )
+            Text(
+                text = when {
+                    !isTransmitter -> "Standby for incoming traffic"
+                    isPttActive -> "Streaming mic -> STT"
+                    else -> "Release to Transmit"
+                },
+                color = Midnight.copy(alpha = 0.6f),
+                fontSize = 12.sp
+            )
         }
     }
 }
@@ -411,7 +355,7 @@ private fun PttButton(
 // Live scrollable console log
 // ---------------------------------------------------------------------------
 @Composable
-private fun ConsoleLogBox(
+private fun ConsoleLogList(
     logs: List<LogEntry>,
     modifier: Modifier = Modifier
 ) {
@@ -426,45 +370,60 @@ private fun ConsoleLogBox(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(ConsoleBlack)
-            .border(BorderStroke(1.dp, Color(0xFF1E2A33)), RoundedCornerShape(16.dp))
     ) {
-        Text(
-            text = "SYSTEM CONSOLE",
-            color = TextDim,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 11.sp,
-            letterSpacing = 1.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(PanelGray)
-                .padding(horizontal = 12.dp, vertical = 6.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Recent Transmissions", color = Midnight, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+        }
+        
         LazyColumn(
             state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(logs) { entry ->
-                Text(
-                    text = "${entry.timestamp}  ${entry.message}",
-                    color = colorForLevel(entry.level),
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
-                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(24.dp))
+                        .background(Ivory)
+                        // A very subtle shadow simulation or border
+                        .border(1.dp, Moss.copy(alpha = 0.2f), RoundedCornerShape(24.dp))
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    // Icon
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(HeartRateBlue),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(Midnight))
+                    }
+                    // Content
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = entry.message,
+                            color = Midnight,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = entry.timestamp,
+                            color = Smoke,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
         }
     }
-}
-
-private fun colorForLevel(level: LogLevel): Color = when (level) {
-    LogLevel.INFO -> TextPrimary
-    LogLevel.NET -> NeonCyan
-    LogLevel.AUDIO -> AudioViolet
-    LogLevel.WARN -> AmberWarn
-    LogLevel.ERROR -> AlertRed
 }
