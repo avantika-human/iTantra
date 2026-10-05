@@ -109,10 +109,13 @@ class TransceiverViewModel : ViewModel() {
             }
 
             runCatching {
-                translatorEngine?.initialize()
-            }.onFailure { t ->
-                appendLog(LogLevel.ERROR, "Translator Load Failed: ${t.localizedMessage}")
-            }
+				translatorEngine?.initialize(
+					srcLang = _uiState.value.currentLanguage,
+					tgtLang = _uiState.value.targetLanguage
+				)
+			}.onFailure { t ->
+				appendLog(LogLevel.ERROR, "Translator Load Failed: ${t.localizedMessage}")
+			}
 
             appendLog(LogLevel.INFO, "Model loading phase completed.")
         }
